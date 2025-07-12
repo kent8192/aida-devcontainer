@@ -56,22 +56,29 @@ for domain in \
     "api.anthropic.com" \
     "sentry.io" \
     "statsig.anthropic.com" \
-    "statsig.com"; do
+    "statsig.com" \
+    "crates.io" \
+    "static.crates.io"; do
     echo "Resolving $domain..."
-    ips=$(dig +short A "$domain")
-    if [ -z "$ips" ]; then
+    ips_output=$(dig +short "$domain")
+    if [ -z "$ips_output" ]; then
         echo "ERROR: Failed to resolve $domain"
         exit 1
     fi
-    
+
+    found_ips=false
     while read -r ip; do
-        if [[ ! "$ip" =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
-            echo "ERROR: Invalid IP from DNS for $domain: $ip"
-            exit 1
+        if [[ "$ip" =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
+            echo "Adding $ip for $domain"
+            ipset add allowed-domains "$ip"
+            found_ips=true
         fi
-        echo "Adding $ip for $domain"
-        ipset add allowed-domains "$ip"
-    done < <(echo "$ips")
+    done < <(echo "$ips_output")
+
+    if [ "$found_ips" = false ]; then
+        echo "ERROR: No IP addresses found for $domain"
+        exit 1
+    fi
 done
 
 # Get host IP from default route

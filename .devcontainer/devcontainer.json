@@ -1,12 +1,14 @@
 {
-  "name": "Claude Code Sandbox",
+  "name": "aida-cli Sandbox",
   "build": {
     "dockerfile": "Dockerfile",
     "args": {
-      "TZ": "${localEnv:TZ:America/Los_Angeles}"
+      "TZ": "${localEnv:TZ:Asia/Tokyo}"
     }
   },
   "runArgs": [
+    "--env-file",
+    "${localWorkspaceFolder}/.env",
     "--cap-add=NET_ADMIN",
     "--cap-add=NET_RAW"
   ],
@@ -25,12 +27,12 @@
         },
         "terminal.integrated.defaultProfile.linux": "zsh",
         "terminal.integrated.profiles.linux": {
+          "zsh": {
+            "path": "zsh"
+          },
           "bash": {
             "path": "bash",
             "icon": "terminal-bash"
-          },
-          "zsh": {
-            "path": "zsh"
           }
         }
       }
@@ -48,5 +50,10 @@
   },
   "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=delegated",
   "workspaceFolder": "/workspace",
-  "postCreateCommand": "sudo /usr/local/bin/init-firewall.sh"
+  "postCreateCommand": "/usr/local/bin/install-aida-cli.sh && sudo /usr/local/bin/init-firewall.sh",
+  "features": {
+    "ghcr.io/itsmechlark/features/redis-server:1": {
+      "port": 6379
+    }
+  }
 }
