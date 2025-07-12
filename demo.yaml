@@ -1,0 +1,38 @@
+redis_url: "redis://127.0.0.1:6379"
+log_level: "debug"
+
+conductor:
+  name: "conductor"
+  log_file: ./logs/conductor.log
+  command: "claude --dangerously-skip-permissions"
+
+leaders:
+  - name: "leader-1"
+    command: "claude --dangerously-skip-permissions"
+    players:
+      - name: "player1-1"
+        command: "claude --dangerously-skip-permissions"
+      - name: "player1-2"
+        command: "claude --dangerously-skip-permissions"
+      - name: "player1-3"
+        command: "claude --dangerously-skip-permissions"
+
+  - name: "leader-2"
+    command: "claude --dangerously-skip-permissions"
+    players:
+      - name: "player2-1"
+        command: "claude --dangerously-skip-permissions"
+      - name: "player2-2"
+        command: "claude --dangerously-skip-permissions"
+      - name: "player2-3"
+        command: "claude --dangerously-skip-permissions"
+
+  - name: "leader-3"
+    command: "claude --dangerously-skip-permissions"
+    players:
+      - name: "player3-1"
+        command: "claude --dangerously-skip-permissions"
+      - name: "player3-2"
+        command: "claude --dangerously-skip-permissions"
+      - name: "player3-3"
+        command: "claude --dangerously-skip-permissions"
