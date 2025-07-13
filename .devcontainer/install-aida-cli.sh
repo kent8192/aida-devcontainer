@@ -65,16 +65,137 @@ git config --global url."https://oauth2:${CLEAN_TOKEN}@github.com/".insteadOf "h
 
 # Configure cargo to use git CLI for better authentication handling
 mkdir -p ~/.cargo
-cat >> ~/.cargo/config.toml << EOF
+if ! grep -q "git-fetch-with-cli" ~/.cargo/config.toml 2>/dev/null; then
+    cat >> ~/.cargo/config.toml << EOF
+
 [net]
 git-fetch-with-cli = true
 EOF
+fi
 
-# Install aida-cli
+# Set environment variables for GitHub authentication
+export GITHUB_TOKEN="${CLEAN_TOKEN}"
+export GH_TOKEN="${CLEAN_TOKEN}"
+
+# Create ~/.local/bin directory if it doesn't exist
+mkdir -p ~/.local/bin
+
+# Add ~/.local/bin to PATH if not already present
+if [[ ":$PATH:" != *":$HOME/.local/bin:"* ]]; then
+    echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
+    echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc
+    export PATH="$HOME/.local/bin:$PATH"
+fi
+
+# Install orchestrobot
 echo "Installing orchestrobot..."
-TMP_DIR=$(mktemp -d)
-git clone --depth 1 "https://github.com/clearclown/aida-cli" "$TMP_DIR"
-(cd "$TMP_DIR/repos/orchestrobot" && cargo install --path .)
-rm -rf "$TMP_DIR"
 
-echo "orchestrobot installation completed successfully"
+# Method 1: Try to download from GitHub Releases first
+echo "Checking for latest release..."
+
+# Get the latest release info
+LATEST_RELEASE=$(gh api repos/clearclown/aida-cli/releases/latest --jq '.tag_name' 2>/dev/null || echo "")
+
+if [ -n "$LATEST_RELEASE" ]; then
+    echo "Found latest release: $LATEST_RELEASE"
+    # Determine the platform and architecture
+    ARCH=$(uname -m)
+    OS=$(uname -s | tr '[:upper:]' '[:lower:]')
+    # Map architecture names
+    case "$ARCH" in
+        x86_64)
+            ARCH="x86_64"
+            ;;
+        aarch64|arm64)
+            ARCH="aarch64"
+            ;;
+        *)
+            echo "Unsupported architecture: $ARCH"
+            ARCH=""
+            ;;
+    esac
+    # Try common naming patterns for the binary
+    BINARY_PATTERNS=(
+        "orchestrobot-${OS}-${ARCH}"
+        "orchestrobot-${ARCH}-${OS}"
+        "orchestrobot_${OS}_${ARCH}"
+        "orchestrobot-${LATEST_RELEASE}-${OS}-${ARCH}"
+        "orchestrobot"
+    )
+    DOWNLOAD_SUCCESS=false
+    for PATTERN in "${BINARY_PATTERNS[@]}"; do
+        echo "Trying to download: $PATTERN"
+        # Try to download the asset
+        if gh release download "$LATEST_RELEASE" \
+            --repo clearclown/aida-cli \
+            --pattern "*${PATTERN}*" \
+            --dir /tmp 2>/dev/null; then
+            # Find the downloaded file
+            DOWNLOADED_FILE=$(find /tmp -name "*${PATTERN}*" -type f -print -quit)
+            if [ -n "$DOWNLOADED_FILE" ]; then
+                echo "Downloaded: $DOWNLOADED_FILE"
+                # Make it executable and move to ~/.local/bin directory
+                chmod +x "$DOWNLOADED_FILE"
+                mv "$DOWNLOADED_FILE" ~/.local/bin/orchestrobot
+                DOWNLOAD_SUCCESS=true
+                break
+            fi
+        fi
+    done
+    if [ "$DOWNLOAD_SUCCESS" = false ]; then
+        echo "No pre-built binary found for $OS-$ARCH in release $LATEST_RELEASE"
+        echo "Available assets:"
+        gh release view "$LATEST_RELEASE" --repo clearclown/aida-cli --json assets --jq '.assets[].name'
+    fi
+else
+    echo "No releases found or unable to access releases"
+    DOWNLOAD_SUCCESS=false
+fi
+
+# Method 2: If download from releases failed, build from source
+if [ "$DOWNLOAD_SUCCESS" = false ]; then
+    echo "Falling back to building from source..."
+    # Try using cargo install with git URL directly
+    if ! cargo install --git "https://github.com/clearclown/aida-cli" --root ~/.cargo orchestrobot 2>/dev/null; then
+        echo "Direct git installation failed, trying with manual clone..."
+        # Clone and install from specific path
+        TMP_DIR=$(mktemp -d)
+        echo "Cloning repository to temporary directory..."
+        if git clone --depth 1 "https://github.com/clearclown/aida-cli" "$TMP_DIR"; then
+            echo "Repository cloned successfully"
+            # Check if the orchestrobot directory exists
+            if [ -d "$TMP_DIR/repos/orchestrobot" ]; then
+                echo "Found orchestrobot in repos/orchestrobot, installing..."
+                (cd "$TMP_DIR/repos/orchestrobot" && cargo install --path . --root ~/.cargo)
+            elif [ -f "$TMP_DIR/Cargo.toml" ]; then
+                # Check if it's in the root
+                if grep -q "name = \"orchestrobot\"" "$TMP_DIR/Cargo.toml"; then
+                    echo "Found orchestrobot in root, installing..."
+                    (cd "$TMP_DIR" && cargo install --path . --root ~/.cargo)
+                else
+                    echo "Error: orchestrobot not found in expected locations"
+                    rm -rf "$TMP_DIR"
+                    exit 1
+                fi
+            else
+                echo "Error: Cannot find orchestrobot package in the repository"
+                rm -rf "$TMP_DIR"
+                exit 1
+            fi
+            rm -rf "$TMP_DIR"
+        else
+            echo "Error: Failed to clone repository"
+            exit 1
+        fi
+    fi
+fi
+
+# Verify installation
+if command -v orchestrobot &> /dev/null; then
+    echo "orchestrobot installation completed successfully"
+    echo "Installed at: $(which orchestrobot)"
+    orchestrobot --version || echo "Version information not available"
+else
+    echo "Error: orchestrobot installation verification failed"
+    exit 1
+fi
